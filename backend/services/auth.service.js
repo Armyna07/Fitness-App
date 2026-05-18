@@ -16,6 +16,8 @@ const register = async ({ displayName, username, email, password }) => {
   return { user, token };
 };
  
+// need to include check for duplicater usernames
+
 const login = async ({ login, password }) => {
 
   const user = await User.findOne({

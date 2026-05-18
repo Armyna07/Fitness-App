@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const crypto = require('crypto');
+// const crypto = require('crypto');
 
 const ChallengeSchema = new mongoose.Schema({
 
@@ -119,15 +119,12 @@ const ChallengeSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 // Auto-generate invite code before saving
-ChallengeSchema.pre('save', function(next) {
-  if (!this.inviteCode) {
-    this.inviteCode = crypto.randomBytes(3).toString('hex').toUpperCase();
-  }
+ChallengeSchema.pre('save', async function() {
+
   if (this.startDate && this.endDate) {
     const diff = this.endDate - this.startDate;
     this.duration = Math.ceil(diff / (1000 * 60 * 60 * 24));
   }
-  next();
 });
 
 module.exports = mongoose.model('Challenge', ChallengeSchema);
