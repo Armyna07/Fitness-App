@@ -62,8 +62,8 @@ const ChallengeSchema = new mongoose.Schema({
   // draft → active → completed
   status: {
     type: String,
-    enum: ['draft', 'active', 'completed'],
-    default: 'draft'
+    enum: ['upcoming', 'active', 'completed'],
+    default: 'upcoming'
   },
 
   // ── INVITE SYSTEM (MVP CH-03) ─────────────────────

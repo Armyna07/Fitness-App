@@ -55,8 +55,17 @@ const UserSchema = new mongoose.Schema({
   friends: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
-  }]
+  }],
 
+  avatar: {
+  type: String,
+  default: null
+},
+displayName: {
+  type: String
+}
+
+ 
 }, { timestamps: true });
 
 module.exports = mongoose.model('User', UserSchema);
