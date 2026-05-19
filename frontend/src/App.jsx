@@ -1,122 +1,99 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
-import './App.css'
+import { useState } from "react";
+import { css } from "./constants/theme";
+import { mockChallenges } from "./data/mockData";
 
-function App() {
-  const [count, setCount] = useState(0)
+import FriendsPage     from './pages/FriendsPage';
+import Navbar          from "./components/Navbar";
+import LoginPage       from "./pages/LoginPage";
+import RegisterPage    from "./pages/RegisterPage";
+import JoinPreviewPage from "./pages/JoinPreviewPage";
+import Dashboard       from "./pages/Dashboard";
+import ChallengeList   from "./pages/ChallengeList";
+import CreateChallenge from "./pages/CreateChallenge";
+import ChallengeDetail from "./pages/ChallengeDetail";
+import LeaderboardPage from "./pages/LeaderboardPage";
+import ProfilePage     from "./pages/ProfilePage";
+import EditProfile     from "./pages/EditProfile";
+import NotFound        from "./pages/NotFound";
+
+export default function App() {
+  const [auth, setAuth]                       = useState(false);
+  const [page, setPage]                       = useState("login");
+  const [activeTab, setActiveTab]             = useState("home");
+  const [detailChallenge, setDetailChallenge] = useState(mockChallenges[0]);
+  const [showCreate, setShowCreate]           = useState(false);
+
+  const handleLogin = () => {
+    setAuth(true);
+    setPage("dashboard");
+    setActiveTab("home");
+  };
+
+  const navTo = (tab) => {
+    setActiveTab(tab);
+    if (tab === "home")        setPage("dashboard");
+    if (tab === "challenges")  setPage("challenges");
+    if (tab === "leaderboard") setPage("leaderboard");
+    if (tab === 'friends')     setPage('friends');   
+    if (tab === "profile")     setPage("profile");
+  };
+
+  const renderPage = () => {
+    if (!auth) {
+      if (page === "register") return <RegisterPage onDone={handleLogin} onLogin={() => setPage("login")} />;
+      if (page === "join")     return <JoinPreviewPage challenge={mockChallenges[0]} onJoin={handleLogin} onBack={() => setPage("login")} />;
+      return <LoginPage onLogin={handleLogin} onRegister={() => setPage("register")} />;
+    }
+    if (showCreate)           return <CreateChallenge onBack={() => setShowCreate(false)} />;
+    if (page === "detail")    return <ChallengeDetail challenge={detailChallenge} onBack={() => setPage("challenges")} />;
+    if (page === "editProfile") return <EditProfile onBack={() => setPage("profile")} />;
+    if (page === "archived")  return <LeaderboardPage archived />;
+    if (page === "404")       return <NotFound onHome={() => { setPage("dashboard"); setActiveTab("home"); }} />;
+    if (page === "challenges")  return <ChallengeList onNav={p => setPage(p)} setDetailChallenge={setDetailChallenge} setShowCreate={setShowCreate} />;
+    if (page === "leaderboard") return <LeaderboardPage />;
+    if (page === "profile")     return <ProfilePage onEdit={() => setPage("editProfile")} />;
+    if (page === 'friends') return <FriendsPage />;
+    return <Dashboard onNav={p => setPage(p)} setDetailChallenge={setDetailChallenge} />;
+  };
 
   return (
     <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+      <style>{css}</style>
 
-      <div className="ticks"></div>
+      {/* Nebula background blobs */}
+      <div className="nebula" style={{ width: 400, height: 400, top: -100,  left: -100, background: "radial-gradient(circle, rgba(124,58,237,0.12) 0%, transparent 70%)" }} />
+      <div className="nebula" style={{ width: 300, height: 300, top: 200,   right: -60, background: "radial-gradient(circle, rgba(234,88,12,0.08) 0%, transparent 70%)" }} />
+      <div className="nebula" style={{ width: 500, height: 500, bottom: -200, left: "30%", background: "radial-gradient(circle, rgba(124,58,237,0.07) 0%, transparent 70%)" }} />
+      <div className="noise-overlay" />
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+      <div className="app-shell">
+        {/* Authenticated navbar */}
+        {auth && (
+          <Navbar
+            activeTab={activeTab}
+            onNav={navTo}
+            onProfile={() => navTo("profile")}
+            onGo404={() => setPage("404")}
+            onGoArchive={() => setPage("archived")}
+          />
+        )}
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
+        {/* Pre-auth logo + buttons */}
+        {!auth && (
+          <div style={{ position: "fixed", top: 16, left: 24, zIndex: 100 }}>
+            <div className="nav-logo">💓 FitPulse</div>
+          </div>
+        )}
+        {!auth && (
+          <div style={{ position: "fixed", top: 16, right: 24, zIndex: 100, display: "flex", gap: 8 }}>
+            <button className="btn btn-ghost btn-sm" onClick={() => setPage("register")}>Register</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => setPage("join")}>Preview Join</button>
+          </div>
+        )}
+
+        {renderPage()}
+      </div>
     </>
-  )
+  );
 }
 
-export default App
