@@ -1,134 +1,148 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { io } from 'socket.io-client';
 import { Avatar, Toggle } from '../components/UI';
-import { mockChallenges, mockLeaderboard } from '../data/mockData';
+import { getChallenges, getFriendChallenges } from '../api/challengeApi';
+import { getLeaderboard, getLeaderboardToday, getLeaderboardArchive, getGlobalLeaderboard } from '../api/leaderboardApi';
+import { getMe, getFriends } from '../api/userApi';
 
-// ── Socket connection ──────────────────────────────────────────────────────
 let socket;
-try {
-  socket = io('http://localhost:5000', { timeout: 3000 });
-} catch {
-  socket = null;
-}
+try { socket = io('http://localhost:5000', { timeout: 3000 }); }
+catch { socket = null; }
 
-// ── Mock friend challenges for the Friend Battle tab ───────────────────────
-const mockFriendChallenges = [
-  { id: 'fc1', label: 'Alex K. vs You — 10K Steps' },
-  { id: 'fc2', label: 'Jordan L. vs Sam T. vs You — Push-Up' },
-];
-
-// ── Helper: map backend data to leaderboard row format ─────────────────────
-const mapBackendRows = (data, view) =>
+const mapBackendRows = (data, view, myId, friendIds = []) =>
   data.map((item, i) => ({
-    rank:   i + 1,
-    name:   item.user?.username || item.username || 'Unknown',
-    total:  view === 'today' ? (item.todayAmount ?? item.points ?? 0) : (item.totalAmount ?? item.points ?? 0),
-    streak: item.currentStreak ?? 0,
-    today:  (item.todayAmount ?? 0) > 0,
-    me:     false,
+    rank:     i + 1,
+    name:     item.displayName || item.user?.displayName || item.user?.username || 'Unknown',
+    total:    view === 'today' ? (item.todayAmount ?? 0) : (item.totalAmount ?? 0),
+    streak:   item.currentStreak ?? 0,
+    today:    (item.todayAmount ?? 0) > 0,
+    me:       myId && String(item.userId) === String(myId),
+    isFriend: friendIds.includes(String(item.userId)),
   }));
 
 export default function LeaderboardPage({ archived = false }) {
-  const [tab,        setTab]        = useState('challenge');
-  const [view,       setView]       = useState('cumulative');
-  const [friends,    setFriends]    = useState(false);
-  const [challenge,  setChallenge]  = useState(mockChallenges.filter(c => c.status === 'active')[0]);
-  const [friendFC,   setFriendFC]   = useState(mockFriendChallenges[0]);
-  const [rows,       setRows]       = useState(mockLeaderboard);
-  const [isLive,     setIsLive]     = useState(false);
-  const [lastUpdate, setLastUpdate] = useState(null);
-  const joinedRooms = useRef(new Set());
+  const [tab,                 setTab]               = useState('challenge');
+  const [view,                setView]              = useState('cumulative');
+  const [friendsOnly,         setFriendsOnly]       = useState(false);
+  const [availableChallenges, setAvailableChallenges] = useState([]);
+  const [challenge,           setChallenge]         = useState(null);
+  const [friendChallenges,    setFriendChallenges]  = useState([]);
+  const [friendFC,            setFriendFC]          = useState(null);
+  const [rows,                setRows]              = useState([]);
+  const [globalRows,          setGlobalRows]        = useState([]);
+  const [friendIds,           setFriendIds]         = useState([]);
+  const [isLive,              setIsLive]            = useState(false);
+  const [lastUpdate,          setLastUpdate]        = useState(null);
+  const [myId,                setMyId]              = useState(null);
+  const [loading,             setLoading]           = useState(true);
 
-  // ── Socket.io setup ────────────────────────────────────────────────────
+  // Load current user + friends once on mount
+  useEffect(() => {
+    getMe().then(u => setMyId(u._id || u.id)).catch(() => {});
+    getFriends().then(fs => setFriendIds(fs.map(f => String(f._id || f.id)))).catch(() => {});
+  }, []);
+
+  // Load challenges and friend challenges
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const data = await getChallenges();
+        const list = data.challenges || [];
+        setAvailableChallenges(list);
+        if (list.length) {
+          const first = list.find(c => c.status === 'active') || list[0];
+          setChallenge(first);
+        }
+        const fcs = await getFriendChallenges();
+        setFriendChallenges(fcs);
+        if (fcs.length) setFriendFC(fcs[0]);
+      } catch (err) {
+        console.error('LeaderboardPage init error:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, []);
+
+  // Challenge tab leaderboard
+  useEffect(() => {
+    if (tab !== 'challenge' || !challenge) return;
+    const load = async () => {
+      try {
+        const id = challenge._id || challenge.id;
+        const data = archived
+          ? await getLeaderboardArchive(id)
+          : view === 'today'
+            ? await getLeaderboardToday(id)
+            : await getLeaderboard(id);
+        setRows(mapBackendRows(data.rankings || data, view, myId, friendIds));
+      } catch (err) { console.error(err); }
+    };
+    load();
+  }, [archived, tab, challenge, view, myId, friendIds]);
+
+  // Global tab leaderboard
+  useEffect(() => {
+    if (tab !== 'global') return;
+    getGlobalLeaderboard()
+      .then(data => setGlobalRows(mapBackendRows(data.rankings || [], 'cumulative', myId, friendIds)))
+      .catch(console.error);
+  }, [tab, myId, friendIds]);
+
+  // Friend battle tab leaderboard
+  useEffect(() => {
+    if (tab !== 'friend' || !friendFC) return;
+    const load = async () => {
+      try {
+        const id = friendFC.challenge?._id || friendFC.challenge;
+        const data = await getLeaderboard(id);
+        const participantIds = [
+          friendFC.initiator?._id,
+          ...(friendFC.opponents || []).map(o => o._id || o),
+        ].filter(Boolean).map(String);
+        const filtered = (data.rankings || []).filter(r =>
+          participantIds.includes(String(r.userId))
+        );
+        setRows(mapBackendRows(filtered, 'cumulative', myId, friendIds));
+      } catch (err) { console.error(err); }
+    };
+    load();
+  }, [tab, friendFC, myId, friendIds]);
+
+  // Socket live indicator
   useEffect(() => {
     if (!socket) return;
-
-    socket.on('connect', () => {
-      setIsLive(true);
-      socket.emit('join-leaderboard', 'global-leaderboard');
-      joinedRooms.current.add('global-leaderboard');
-    });
-
+    socket.on('connect', () => setIsLive(true));
     socket.on('disconnect', () => setIsLive(false));
+    return () => { socket.off('connect'); socket.off('disconnect'); };
+  }, []);
 
-    socket.on('global-leaderboard-update', (data) => {
-      if (tab === 'global') {
-        setRows(mapBackendRows(data, view));
-        setLastUpdate(new Date().toLocaleTimeString());
-      }
-    });
-
-    socket.on('leaderboard-update', (data) => {
-      if (tab === 'challenge') {
-        setRows(mapBackendRows(data, view));
-        setLastUpdate(new Date().toLocaleTimeString());
-      }
-    });
-
-    socket.on('friend-leaderboard-update', (data) => {
-      if (tab === 'friend') {
-        setRows(mapBackendRows(data, view));
-        setLastUpdate(new Date().toLocaleTimeString());
-      }
-    });
-
-    return () => {
-      socket.off('connect');
-      socket.off('disconnect');
-      socket.off('global-leaderboard-update');
-      socket.off('leaderboard-update');
-      socket.off('friend-leaderboard-update');
-    };
-  }, [tab, view]);
-
-  // ── Join correct room + fetch initial data when tab/challenge changes ──
+  // Socket leaderboard updates for challenge tab
   useEffect(() => {
-    if (!socket || !isLive) return;
+    if (!socket || tab !== 'challenge' || !challenge) return;
+    const challengeId = String(challenge._id || challenge.id);
+    const joinRoom = () => socket.emit('join-challenge', challengeId);
+    if (socket.connected) joinRoom();
+    socket.on('connect', joinRoom);
+    socket.on('leaderboard:update', (rankings) => {
+      if (tab !== 'challenge') return;
+      setRows(mapBackendRows(rankings, view, myId, friendIds));
+      setLastUpdate(new Date().toLocaleTimeString());
+    });
+    return () => {
+      socket.off('connect', joinRoom);
+      socket.off('leaderboard:update');
+      socket.emit('leave-challenge', challengeId);
+    };
+  }, [challenge, tab, view, myId, friendIds]);
 
-    if (tab === 'global') {
-      const room = 'global-leaderboard';
-      if (!joinedRooms.current.has(room)) {
-        socket.emit('join-leaderboard', room);
-        joinedRooms.current.add(room);
-      }
-      fetch('http://localhost:5000/api/leaderboard/global')
-        .then(r => r.json())
-        .then(data => setRows(mapBackendRows(data, view)))
-        .catch(() => {});
-    }
-
-    if (tab === 'challenge' && challenge?._id) {
-      const room = `challenge-${challenge._id}`;
-      if (!joinedRooms.current.has(room)) {
-        socket.emit('join-leaderboard', room);
-        joinedRooms.current.add(room);
-      }
-      fetch(`http://localhost:5000/api/leaderboard/challenge/${challenge._id}`)
-        .then(r => r.json())
-        .then(data => setRows(mapBackendRows(data, view)))
-        .catch(() => {});
-    }
-
-    if (tab === 'friend' && friendFC?.id) {
-      const room = `friend-challenge-${friendFC.id}`;
-      if (!joinedRooms.current.has(room)) {
-        socket.emit('join-leaderboard', room);
-        joinedRooms.current.add(room);
-      }
-      fetch(`http://localhost:5000/api/leaderboard/friend-challenge/${friendFC.id}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-      })
-        .then(r => r.json())
-        .then(data => setRows(mapBackendRows(data, view)))
-        .catch(() => {});
-    }
-  }, [tab, challenge, friendFC, isLive, view]);
-
-  // ── Filter rows ───────────────────────────────────────────────────────
-  const displayRows = friends ? rows.filter(r => r.me || r.isFriend) : rows;
+  const displayRows = friendsOnly ? rows.filter(r => r.me || r.isFriend) : rows;
   const top3 = displayRows.slice(0, 3);
+  const activeRows = tab === 'global' ? globalRows : displayRows;
 
-  // ── Render ────────────────────────────────────────────────────────────
+  if (loading) return <div className='page fade-in'><div className='text-muted'>Loading...</div></div>;
+
   return (
     <div className='page fade-in'>
 
@@ -136,44 +150,32 @@ export default function LeaderboardPage({ archived = false }) {
       <div className='flex items-center justify-between mb-20'>
         <div>
           <div className='label mb-4'>Rankings</div>
-          <div className='title-xl'>
-            {archived ? 'Archived' : 'Leaderboard'} 🏆
-          </div>
+          <div className='title-xl'>{archived ? 'Archived' : 'Leaderboard'} 🏆</div>
         </div>
         <div className='flex gap-8 items-center'>
-          {archived && <span className='badge badge-completed'>Final Snapshot</span>}
           {!archived && (
             <div className='flex items-center gap-8'>
-              <div style={{
-                width: 8, height: 8, borderRadius: '50%',
+              <div style={{ width: 8, height: 8, borderRadius: '50%',
                 background: isLive ? '#10b981' : '#64748b',
-                boxShadow: isLive ? '0 0 6px #10b981' : 'none',
-                animation: isLive ? 'pulse-glow 2s ease-in-out infinite' : 'none'
-              }} />
-              <span className='text-xs text-muted'>
-                {isLive ? 'Live' : 'Offline — showing mock data'}
-              </span>
+                boxShadow: isLive ? '0 0 6px #10b981' : 'none' }} />
+              <span className='text-xs text-muted'>{isLive ? 'Live' : 'Offline'}</span>
             </div>
           )}
-          {lastUpdate && (
-            <span className='text-xs text-muted'>Updated {lastUpdate}</span>
-          )}
+          {lastUpdate && <span className='text-xs text-muted'>Updated {lastUpdate}</span>}
         </div>
       </div>
 
-      {/* Leaderboard Type Tabs */}
+      {/* Tab pills */}
       {!archived && (
         <div className='tab-row mb-16'>
           {[
             { key: 'challenge', label: '🏆 Challenge' },
-            { key: 'global',    label: '🌍 Global'    },
+            { key: 'global',    label: '🌍 Global' },
             { key: 'friend',    label: '👥 Friend Battle' },
           ].map(t => (
-            <button
-              key={t.key}
+            <button key={t.key}
               className={`tab-pill ${tab === t.key ? 'active' : ''}`}
-              onClick={() => setTab(t.key)}
-            >
+              onClick={() => setTab(t.key)}>
               {t.label}
             </button>
           ))}
@@ -183,62 +185,65 @@ export default function LeaderboardPage({ archived = false }) {
       {/* Challenge selector */}
       {(tab === 'challenge' || archived) && (
         <div className='form-group mb-16'>
-          <select
-            className='form-input'
-            value={challenge?.name || ''}
+          <select className='form-input'
+            value={challenge?._id || ''}
             onChange={e => {
-              const found = mockChallenges.find(c => c.name === e.target.value);
+              const found = availableChallenges.find(c => c._id === e.target.value);
               setChallenge(found || null);
-            }}
-          >
-            {mockChallenges
+            }}>
+            {availableChallenges
               .filter(c => archived ? c.status === 'completed' : c.status === 'active')
-              .map(c => <option key={c.id}>{c.name}</option>)}
+              .map(c => <option key={c._id} value={c._id}>{c.name}</option>)}
           </select>
         </div>
       )}
 
-      {/* Friend Challenge selector */}
+      {/* Friend battle selector */}
       {tab === 'friend' && !archived && (
         <div className='form-group mb-16'>
-          <select
-            className='form-input'
-            value={friendFC?.id || ''}
-            onChange={e => {
-              const found = mockFriendChallenges.find(f => f.id === e.target.value);
-              setFriendFC(found || null);
-            }}
-          >
-            {mockFriendChallenges.map(f => (
-              <option key={f.id} value={f.id}>{f.label}</option>
-            ))}
-          </select>
+          {friendChallenges.length === 0 ? (
+            <div className='empty-state'>
+              <div className='empty-icon'>⚔️</div>
+              <div className='text-dim'>No friend challenges yet — challenge a friend from the Friends page!</div>
+            </div>
+          ) : (
+            <select className='form-input'
+              value={friendFC?._id || ''}
+              onChange={e => {
+                const found = friendChallenges.find(f => f._id === e.target.value);
+                setFriendFC(found || null);
+              }}>
+              {friendChallenges.map(f => (
+                <option key={f._id} value={f._id}>
+                  {f.initiator?.displayName || f.initiator?.username} vs you — {f.challenge?.name}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
       )}
 
-      {/* Cumulative / Today + Friends only toggles */}
+      {/* View toggle + friends filter (challenge tab only) */}
       {!archived && tab === 'challenge' && (
         <div className='flex gap-8 mb-20 flex-wrap items-center'>
           <div className='tab-row' style={{ margin: 0 }}>
             {['cumulative', 'today'].map(v => (
-              <button
-                key={v}
+              <button key={v}
                 className={`tab-pill ${view === v ? 'active' : ''}`}
-                onClick={() => setView(v)}
-              >
+                onClick={() => setView(v)}>
                 {v.charAt(0).toUpperCase() + v.slice(1)}
               </button>
             ))}
           </div>
           <div className='toggle-row' style={{ gap: 8 }}>
             <span className='text-xs text-muted'>Friends only</span>
-            <Toggle on={friends} onChange={setFriends} />
+            <Toggle on={friendsOnly} onChange={setFriendsOnly} />
           </div>
         </div>
       )}
 
-      {/* Podium */}
-      {top3.length >= 3 && (
+      {/* Podium — hidden on global tab */}
+      {top3.length >= 3 && tab !== 'global' && (
         <div className='card mb-16'>
           <div className='podium'>
             {[
@@ -256,65 +261,63 @@ export default function LeaderboardPage({ archived = false }) {
         </div>
       )}
 
-      {/* Full leaderboard table */}
-      <div className='card'>
-        <div className='label mb-12' style={{ padding: '0 14px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '36px 36px 1fr 90px 70px 36px', gap: 8, alignItems: 'center' }}>
-            <span>Rank</span>
-            <span></span>
-            <span>Name</span>
-            <span style={{ textAlign: 'right' }}>{view === 'today' ? 'Today' : 'Total'}</span>
-            <span style={{ textAlign: 'right' }}>Streak</span>
-            <span style={{ textAlign: 'center' }}>✓</span>
+      {/* Main table — skip if friend tab has no challenges */}
+      {tab === 'friend' && friendChallenges.length === 0 ? null : (
+        <div className='card'>
+          <div className='label mb-12' style={{ padding: '0 14px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '36px 36px 1fr 90px 70px 36px', gap: 8, alignItems: 'center' }}>
+              <span>Rank</span>
+              <span></span>
+              <span>Name</span>
+              <span style={{ textAlign: 'right' }}>{view === 'today' ? 'Today' : 'Total'}</span>
+              <span style={{ textAlign: 'right' }}>Streak</span>
+              <span style={{ textAlign: 'center' }}>✓</span>
+            </div>
           </div>
-        </div>
 
-        <div className='flex-col' style={{ gap: 2 }}>
-          {displayRows.length === 0 ? (
-            <div className='empty-state'>
-              <div className='empty-icon'>🏆</div>
-              <div className='text-dim'>No data yet — be the first to log!</div>
-            </div>
-          ) : displayRows.map((p, i) => (
-            <div key={i} className={`lb-row ${p.me ? 'me' : ''}`}>
-              <div className='lb-rank'>
-                {p.rank <= 3 ? ['🥇','🥈','🥉'][p.rank - 1] : p.rank}
+          <div className='flex-col' style={{ gap: 2 }}>
+            {activeRows.length === 0 ? (
+              <div className='empty-state'>
+                <div className='empty-icon'>🏆</div>
+                <div className='text-dim'>No data yet — be the first to log!</div>
               </div>
-              <Avatar name={p.name} size={30} idx={i} />
-              <div>
-                <div className='lb-name'>
-                  {p.name}{' '}
-                  {p.me && <span className='text-xs text-purple'>(you)</span>}
+            ) : activeRows.map((p, i) => (
+              <div key={i} className={`lb-row ${p.me ? 'me' : ''}`}>
+                <div className='lb-rank'>
+                  {p.rank <= 3 ? ['🥇', '🥈', '🥉'][p.rank - 1] : p.rank}
+                </div>
+                <Avatar name={p.name} size={30} idx={i} />
+                <div>
+                  <div className='lb-name'>
+                    {p.name} {p.me && <span className='text-xs text-purple'>(you)</span>}
+                  </div>
+                </div>
+                <div className='lb-stat'>{(p.total || 0).toLocaleString()}</div>
+                <div className='lb-stat'>{p.streak ?? 0} 🔥</div>
+                <div className={`lb-check ${p.today ? 'done' : 'pending'}`}>
+                  {p.today ? '✓' : '–'}
                 </div>
               </div>
-              <div className='lb-stat'>{(p.total || 0).toLocaleString()}</div>
-              <div className='lb-stat'>{p.streak ?? 0} 🔥</div>
-              <div className={`lb-check ${p.today ? 'done' : 'pending'}`}>
-                {p.today ? '✓' : '–'}
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
 
-        {/* Sticky own rank */}
-        {displayRows.length > 0 && !displayRows.find(p => p.me) && (
-          <>
-            <div className='divider' />
-            <div className='lb-row me'>
-              <div className='lb-rank'>—</div>
-              <Avatar name='You' size={30} idx={1} />
-              <div>
-                <div className='lb-name'>
-                  You <span className='text-xs text-purple'>(you)</span>
-                </div>
+          {/* "You" row at the bottom if not in list (not shown on global tab) */}
+          {activeRows.length > 0 && !activeRows.find(p => p.me) && tab !== 'global' && (
+            <>
+              <div className='divider' />
+              <div className='lb-row me'>
+                <div className='lb-rank'>—</div>
+                <Avatar name='You' size={30} idx={1} />
+                <div><div className='lb-name'>You <span className='text-xs text-purple'>(you)</span></div></div>
+                <div className='lb-stat'>—</div>
+                <div className='lb-stat'>— 🔥</div>
+                <div className='lb-check pending'>–</div>
               </div>
-              <div className='lb-stat'>—</div>
-              <div className='lb-stat'>— 🔥</div>
-              <div className='lb-check pending'>–</div>
-            </div>
-          </>
-        )}
-      </div>
+            </>
+          )}
+        </div>
+      )}
+
     </div>
   );
 }

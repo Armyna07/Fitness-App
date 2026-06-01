@@ -55,8 +55,8 @@ const respond = async (friendChallengeId, userId, status) => {
   // if declined remove them from opponents
  
   // Use model method to check if all responded, then activate if any accepted
-  if (fc.allResponded() && fc.anyAccepted()) {
-    fc.status = 'active';
+ if (fc.allResponded()) {
+    fc.status = fc.anyAccepted() ? 'active' : 'declined';
   }
  
   await fc.save();

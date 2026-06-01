@@ -1,130 +1,98 @@
 const mongoose = require('mongoose');
-// const crypto = require('crypto');
 
-const ChallengeSchema = new mongoose.Schema({
+const ChallengeSchema = new mongoose.Schema(
+  {
+    name: {
+      type: String,
+      required: true,
+    },
 
-  // ── BASIC INFO ───────────────────────────────────
-  name: {
-    type: String,
-    required: true,
-    trim: true
-  },
+    description: {
+      type: String,
+      required: true,
+    },
 
-  description: {
-    type: String,
-    trim: true
-  },
+    rules: {
+      type: String,
+      default: '',
+    },
 
-  rules: {
-    type: String
-  },
+    type: {
+      type: String,
+      default: 'custom',
+    },
 
-  // ── CHALLENGE TYPE (MVP CH-02) ───────────────────
-  type: {
-    type: String,
-    enum: ['steps', 'workout', 'custom'],
-    required: true
-  },
+    goal: {
+      type: Number,
+      default: 0,
+    },
 
-  // Only used when type is 'custom'
-  customMetric: {
-    type: String,
-    maxlength: 30  // e.g. 'pushups'
-  },
+    unit: {
+      type: String,
+      default: 'points',
+    },
 
-  customUnit: {
-    type: String,
-    maxlength: 15  // e.g. 'reps'
-  },
+    duration: {
+      type: Number,
+      required: true,
+    },
 
-  // ── GOAL (MVP CH-01) ─────────────────────────────
-  goalValue: {
-    type: Number,
-    required: true  // e.g. 20000 for steps
-  },
+    status: {
+      type: String,
+      enum: ['active', 'upcoming', 'completed'],
+      default: 'active',
+    },
 
-  // ── DATES ────────────────────────────────────────
-  startDate: {
-    type: Date,
-    required: true
-  },
+    startDate: {
+      type: Date,
+    },
 
-  endDate: {
-    type: Date,
-    required: true
-  },
+    endDate: {
+      type: Date,
+    },
 
-  duration: {
-    type: Number  // calculated in days
-  },
+    participants: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+      },
+    ],
 
-  // ── STATUS LIFECYCLE (MVP CH-10) ──────────────────
-  // draft → active → completed
-  status: {
-    type: String,
-    enum: ['upcoming', 'active', 'completed'],
-    default: 'upcoming'
-  },
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+    },
 
-  // ── INVITE SYSTEM (MVP CH-03) ─────────────────────
-  inviteCode: {
-    type: String,
-    unique: true,
-    sparse: true  // allows multiple null values
-  },
+    inviteCode: {
+      type: String,
+      unique: true,
+      sparse: true,
+    },
 
-  inviteLink: {
-    type: String
-  },
+    inviteLink: {
+      type: String,
+    },
 
-  // ── PARTICIPANTS ──────────────────────────────────
-  participants: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User'
-  }],
-
-  // Max participants cap — null means unlimited (MVP CH-09)
-  maxParticipants: {
-    type: Number,
-    default: null
-  },
-
-  // ── VISIBILITY (public/private) ───────────────────
-  visibility: {
-    type: String,
-    enum: ['public', 'private'],
-    default: 'public'
-  },
-
-  // Who created the challenge
-  createdBy: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User'
-  },
-
-  // Users allowed to join private challenges
-  allowedUsers: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User'
-  }],
-
-  // ── LEADERBOARD SNAPSHOT (MVP LB-07) ─────────────
-  // Saved when challenge completes — final rankings preserved
-  finalLeaderboard: [{
-    user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    visibility: {
+      type: String,
+      enum: ['public', 'private'],
+      default: 'public',
+    },
+    finalLeaderboard: [
+  {
+    user: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+    },
     rank: Number,
-    totalAmount: Number
-  }]
+    totalAmount: Number,
+  },
+],
 
-}, { timestamps: true });
-
-// Auto-generate invite code before saving
-ChallengeSchema.pre('save', async function() {
-
-  if (this.startDate && this.endDate) {
-    const diff = this.endDate - this.startDate;
-    this.duration = Math.ceil(diff / (1000 * 60 * 60 * 24));
+  },
+  {
+    timestamps: true,
   }
-});
+);
 
 module.exports = mongoose.model('Challenge', ChallengeSchema);
