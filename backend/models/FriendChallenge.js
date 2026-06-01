@@ -48,7 +48,7 @@ const FriendChallengeSchema = new mongoose.Schema({
   // completed — challenge ended and winner determined
   status: {
     type: String,
-    enum: ['pending', 'active', 'completed'],
+    enum: ['pending', 'active', 'completed', 'declined'],
     default: 'pending'
   },
 

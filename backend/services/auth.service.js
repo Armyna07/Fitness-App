@@ -18,14 +18,11 @@ const register = async ({ displayName, username, email, password }) => {
  
 // need to include check for duplicater usernames
 
-const login = async ({ login, password }) => {
-
+const login = async ({ login: email, password }) => {
   const user = await User.findOne({
-    $or: [
-      { email: login },
-      { username: login.toLowerCase() }
-    ]
+    $or: [{ email }, { username: email?.toLowerCase() }]
   });
+
   console.log(user);
 
   if (!user || !(await bcrypt.compare(password, user.password))) {

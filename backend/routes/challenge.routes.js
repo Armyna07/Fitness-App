@@ -16,8 +16,8 @@ router.patch('/:id', protect, validate(editChallengeSchema), challengeController
 router.delete('/:id', protect, challengeController.remove);
  
 // Join / leave
-router.post('/:id/join', protect, challengeController.joinById);
 router.post('/join/:code', protect, challengeController.joinByCode);
+router.post('/:id/join', protect, challengeController.joinById);
 router.delete('/:id/leave', protect, challengeController.leave);
  
 // not done yett >

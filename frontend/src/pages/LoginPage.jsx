@@ -1,8 +1,25 @@
 import { useState } from "react";
+import { loginUser } from "../api/authApi";
 
 export default function LoginPage({ onLogin, onRegister }) {
   const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
+
+  const handleLogin = async () => {
+    try {
+      const data = await loginUser({
+  login: email,
+  password: pass,
+});
+
+      localStorage.setItem("token", data.token);
+
+      onLogin();
+    } catch (err) {
+      console.log(err);
+      alert(err.response?.data?.message || "Login failed");
+    }
+  };
 
   return (
     <div className="auth-wrap">
@@ -12,37 +29,47 @@ export default function LoginPage({ onLogin, onRegister }) {
           <div className="title-xl mb-4">Welcome back</div>
           <div className="text-muted">Sign in to your FitPulse account</div>
         </div>
+
         <div className="flex-col gap-16">
           <div className="form-group">
             <label className="form-label">Email</label>
+
             <input
               className="form-input"
               type="email"
               placeholder="you@example.com"
               value={email}
-              onChange={e => setEmail(e.target.value)}
+              onChange={(e) => setEmail(e.target.value)}
             />
           </div>
+
           <div className="form-group">
             <label className="form-label">Password</label>
+
             <input
               className="form-input"
               type="password"
               placeholder="••••••••"
               value={pass}
-              onChange={e => setPass(e.target.value)}
+              onChange={(e) => setPass(e.target.value)}
             />
           </div>
+
           <button
             className="btn btn-amber w-full"
             style={{ justifyContent: "center", padding: "13px" }}
-            onClick={onLogin}
+            onClick={handleLogin}
           >
             Sign in
           </button>
+
           <div className="text-center text-muted">
             Don't have an account?{" "}
-            <span className="text-purple" style={{ cursor: "pointer" }} onClick={onRegister}>
+            <span
+              className="text-purple"
+              style={{ cursor: "pointer" }}
+              onClick={onRegister}
+            >
               Register
             </span>
           </div>
